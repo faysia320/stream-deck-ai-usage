@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "UUID": "com.local.aiusage",
+  "Name": "AI Usage",
+  "Category": "AI Usage",
+  "CategoryIcon": "images/category",
+  "Description": "Show local Codex and Claude subscription usage.",
+  "Author": "Local",
+  "Version": "1.2.0.0",
+  "SDKVersion": 2,
+  "CodePath": "plugin.js",
+  "Nodejs": {"Version": "20"},
+  "OS": [{"Platform":"windows","MinimumVersion":"10"}],
+  "Software": {"MinimumVersion":"6.6"},
+  "Icon": "images/plugin",
+  "Actions": [
+    {"UUID":"com.local.aiusage.codex","Name":"Codex 사용량","Icon":"images/action","Controllers":["Keypad"],"PropertyInspectorPath":"inspector.html","States":[{"Image":"images/blank","ShowTitle":false}]},
+    {"UUID":"com.local.aiusage.claude","Name":"Claude 사용량","Icon":"images/action","Controllers":["Keypad"],"PropertyInspectorPath":"inspector.html","States":[{"Image":"images/blank","ShowTitle":false}]}
+  ]
+}
