@@ -26,8 +26,6 @@ const day = window => {
 };
 // Dark enough that white text stays readable on the filled part of the bar.
 const level = window => window.used >= 90 ? '#C62828' : window.used >= 70 ? '#B26A00' : '#1E7F45';
-// Brand colors frame the key when the title is hidden, so the service stays recognizable.
-const brand = {claude:'#D97757', codex:'#10A37F'};
 
 // Text is drawn as glyph paths, not <text>: Stream Deck substitutes fonts differently from
 // browsers, so only paths keep the measured width. `cap` is the capital height in pixels and
@@ -63,39 +61,37 @@ function bar(id, label, window, x, y, width, height, cap, labelCap, labelTop) {
     text(used(window), x + width - 6, base, cap, {anchor:'end', max, outline:true});
 }
 
-// With the title (default) the body sits below it; without it the body fills the frame.
+// With the title (default) the body sits below it; without it the body fills the whole key.
 function render(kind, entry, state) {
   const weeklyOnly = kind === 'codex' && !entry?.five_hour;
   const t = state.title;
-  const center = (content, base, cap) => text(content, 72, base, cap, {anchor:'middle', max:t ? 136 : 118});
+  const center = (content, base, cap) => text(content, 72, base, cap, {anchor:'middle'});
   if (state.resets) {
     if (weeklyOnly) return t ? center(day(entry?.seven_day), 78, 22) + center(clock(entry?.seven_day), 122, 26)
                              : center(day(entry?.seven_day), 62, 26) + center(clock(entry?.seven_day), 112, 30);
     return t ? center(`5H ${clock(entry?.five_hour)}`, 66, 20) + center(`7D ${day(entry?.seven_day)}`, 102, 19) + center(clock(entry?.seven_day), 134, 19)
-             : center(`5H ${clock(entry?.five_hour)}`, 48, 21) + center(`7D ${day(entry?.seven_day)}`, 88, 21) + center(clock(entry?.seven_day), 126, 21);
+             : center(`5H ${clock(entry?.five_hour)}`, 46, 22) + center(`7D ${day(entry?.seven_day)}`, 88, 22) + center(clock(entry?.seven_day), 128, 22);
   }
   if (state.display === 'graph') {
     if (t) return weeklyOnly ? bar('w', '7D', entry?.seven_day, 4, 38, 136, 102, 42, 15, true)
                              : bar('h', '5H', entry?.five_hour, 4, 36, 136, 50, 28, 15) + bar('w', '7D', entry?.seven_day, 4, 92, 136, 50, 28, 15);
-    return weeklyOnly ? bar('w', '7D', entry?.seven_day, 10, 10, 124, 124, 50, 15, true)
-                      : bar('h', '5H', entry?.five_hour, 10, 10, 124, 58, 32, 14) + bar('w', '7D', entry?.seven_day, 10, 76, 124, 58, 32, 14);
+    return weeklyOnly ? bar('w', '7D', entry?.seven_day, 4, 6, 136, 132, 54, 16, true)
+                      : bar('h', '5H', entry?.five_hour, 4, 6, 136, 63, 34, 15) + bar('w', '7D', entry?.seven_day, 4, 75, 136, 63, 34, 15);
   }
-  if (weeklyOnly) return t ? center(used(entry?.seven_day), 110, 46) : center(used(entry?.seven_day), 97, 50);
+  if (weeklyOnly) return t ? center(used(entry?.seven_day), 110, 46) : center(used(entry?.seven_day), 99, 54);
   if (t) {
     const row = (label, window, middle) => text(label, 8, middle + 7, 14) +
       text(used(window), 138, middle + 15, 30, {anchor:'end', max:138 - 8 - textWidth(label, 14) - 8});
     return row('5H', entry?.five_hour, 62) + row('7D', entry?.seven_day, 113);
   }
   // Label above the number so the number can use the full inner width.
-  const row = (label, window, top) => text(label, 15, top + 15, 13) +
-    text(used(window), 131, top + 56, 36, {anchor:'end', max:117});
-  return row('5H', entry?.five_hour, 10) + row('7D', entry?.seven_day, 72);
+  const row = (label, window, top) => text(label, 8, top + 16, 14) +
+    text(used(window), 138, top + 60, 38, {anchor:'end', max:130});
+  return row('5H', entry?.five_hour, 6) + row('7D', entry?.seven_day, 74);
 }
 
 function svg(kind, entry, state) {
-  const head = state.title
-    ? text(kind === 'codex' ? 'CODEX' : 'CLAUDE', 72, 27, 17, {anchor:'middle'})
-    : `<rect x="3" y="3" width="138" height="138" rx="18" fill="none" stroke="${brand[kind]}" stroke-width="6"/>`;
+  const head = state.title ? text(kind === 'codex' ? 'CODEX' : 'CLAUDE', 72, 27, 17, {anchor:'middle'}) : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">${head}${render(kind, entry, state)}</svg>`;
 }
 
