@@ -15,6 +15,7 @@
   "Icon": "images/plugin",
   "Actions": [
     {"UUID":"com.local.aiusage.codex","Name":"Codex 사용량","Icon":"images/action","Controllers":["Keypad"],"PropertyInspectorPath":"inspector.html","States":[{"Image":"images/blank","ShowTitle":false}]},
-    {"UUID":"com.local.aiusage.claude","Name":"Claude 사용량","Icon":"images/action","Controllers":["Keypad"],"PropertyInspectorPath":"inspector.html","States":[{"Image":"images/blank","ShowTitle":false}]}
+    {"UUID":"com.local.aiusage.claude","Name":"Claude 사용량","Icon":"images/action","Controllers":["Keypad"],"PropertyInspectorPath":"inspector.html","States":[{"Image":"images/blank","ShowTitle":false}]},
+    {"UUID":"com.local.aiusage.combined","Name":"AI 사용량 (통합)","Icon":"images/action","Controllers":["Keypad"],"States":[{"Image":"images/blank","ShowTitle":false}]}
   ]
 }

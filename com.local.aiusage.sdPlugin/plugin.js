@@ -26,6 +26,13 @@ const day = window => {
 };
 // Dark enough that white text stays readable on the filled part of the bar.
 const level = window => window.used >= 90 ? '#C62828' : window.used >= 70 ? '#B26A00' : '#1E7F45';
+// Time left until the reset, coarse enough to fit as a bar label: "2D 5H" or "5H 30M".
+const remaining = window => {
+  if (!window?.reset) return '--';
+  const minutes = Math.max(0, Math.floor((window.reset - Date.now()/1000) / 60));
+  const d = Math.floor(minutes / 1440), h = Math.floor(minutes % 1440 / 60), m = minutes % 60;
+  return d ? `${d}D ${h}H` : `${h}H ${m}M`;
+};
 
 // Text is drawn as glyph paths, not <text>: Stream Deck substitutes fonts differently from
 // browsers, so only paths keep the measured width. `cap` is the capital height in pixels and
@@ -48,7 +55,7 @@ function text(content, x, base, cap, {anchor = 'start', max = 136, outline = fal
 
 // One bar gauge with the label and percentage inside it, so the graph never shrinks the text.
 // labelTop puts the label in the top-left corner instead of beside the number.
-function bar(id, label, window, x, y, width, height, cap, labelCap, labelTop) {
+function bar(id, label, window, x, y, width, height, cap, labelCap, labelTop, color) {
   const fill = window ? Math.round(width * window.used / 100) : 0;
   const labelWidth = textWidth(label, labelCap);
   const labelBase = labelTop ? y + 10 + labelCap : y + (height + labelCap)/2;
@@ -56,14 +63,15 @@ function bar(id, label, window, x, y, width, height, cap, labelCap, labelTop) {
   const max = labelTop ? width - 14 : width - 7 - labelWidth - 8 - 6;
   return `<clipPath id="${id}"><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10"/></clipPath>` +
     `<g clip-path="url(#${id})"><rect x="${x}" y="${y}" width="${width}" height="${height}" fill="#2A2A2A"/>` +
-    (fill ? `<rect x="${x}" y="${y}" width="${fill}" height="${height}" fill="${level(window)}"/>` : '') + '</g>' +
+    (fill ? `<rect x="${x}" y="${y}" width="${fill}" height="${height}" fill="${color || level(window)}"/>` : '') + '</g>' +
     text(label, x + 7, labelBase, labelCap, {outline:true}) +
     text(used(window), x + width - 6, base, cap, {anchor:'end', max, outline:true});
 }
 
 // With the title (default) the body sits below it; without it the body fills the whole key.
 function render(kind, entry, state) {
-  const weeklyOnly = kind === 'codex' && !entry?.five_hour;
+  // Codex and, since the 5-hour limit was dropped, Claude may report only the weekly window.
+  const weeklyOnly = !entry?.five_hour;
   const t = state.title;
   const center = (content, base, cap) => text(content, 72, base, cap, {anchor:'middle'});
   if (state.resets) {
@@ -90,7 +98,16 @@ function render(kind, entry, state) {
   return row('5H', entry?.five_hour, 6) + row('7D', entry?.seven_day, 74);
 }
 
+// Combined key: Claude on top in orange, Codex below in green, each labelled with the
+// time left until its weekly reset.
+function combined() {
+  const half = (id, entry, y, color) => bar(id, remaining(entry?.seven_day), entry?.seven_day,
+                                            4, y, 136, 65, 32, 14, true, color);
+  return half('c', snapshot.claude, 4, '#C15F3C') + half('x', snapshot.codex, 75, '#1E7F45');
+}
+
 function svg(kind, entry, state) {
+  if (kind === 'combined') return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">${combined()}</svg>`;
   const head = state.title ? text(kind === 'codex' ? 'CODEX' : 'CLAUDE', 72, 27, 17, {anchor:'middle'}) : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">${head}${render(kind, entry, state)}</svg>`;
 }
@@ -132,7 +149,8 @@ ws.on('message', raw => {
   try {
     const msg = JSON.parse(raw);
     if (msg.event === 'willAppear') {
-      visible.set(msg.context, {kind:msg.action.endsWith('.codex') ? 'codex' : 'claude', resets:false,
+      const kind = msg.action.endsWith('.codex') ? 'codex' : msg.action.endsWith('.combined') ? 'combined' : 'claude';
+      visible.set(msg.context, {kind, resets:false,
                                 ...options(msg.payload?.settings)});
       refreshTitles();
     } else if (msg.event === 'didReceiveSettings') {
