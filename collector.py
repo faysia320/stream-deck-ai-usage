@@ -18,6 +18,13 @@ CLAUDE = DATA / "claude.json"
 CLAUDE_API_STATE = DATA / "claude_api.json"
 CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 CLAUDE_API_MIN_INTERVAL = 30
+# Claude accounts registered by herdr-harness (one config dir per login). Without it only the
+# default account (CLAUDE_CONFIG_DIR or ~/.claude) is read, as before.
+ACCOUNTS = Path.home() / ".config" / "herdr-harness" / "claude-accounts.json"
+ACCOUNT_CACHE = "usage-cache.json"
+# With the account list, account "a" is always this folder: the process environment only says
+# which account was current when Stream Deck started, not where account "a" lives.
+DEFAULT_ACCOUNT_DIR = Path.home() / ".claude"
 
 
 def number(value):
@@ -74,9 +81,43 @@ def claude_stdin():
         pass
 
 
-def claude_credentials_path():
+def default_config_dir():
     root = os.environ.get("CLAUDE_CONFIG_DIR")
-    return (Path(root) if root else Path.home() / ".claude") / ".credentials.json"
+    return Path(root) if root else Path.home() / ".claude"
+
+
+def claude_credentials_path():
+    return default_config_dir() / ".credentials.json"
+
+
+def claude_accounts():
+    # [{key, dir}] in registration order; the default account is always first.
+    data = read_json(ACCOUNTS)
+    if not (isinstance(data, dict) and isinstance(data.get("accounts"), dict)):
+        return [{"key": "a", "dir": default_config_dir()}]
+    first = data["accounts"].get("a") if isinstance(data["accounts"].get("a"), dict) else {}
+    found = [{"key": "a", "dir": Path(first["dir"]) if isinstance(first.get("dir"), str) else DEFAULT_ACCOUNT_DIR}]
+    for key, account in data["accounts"].items():
+        if key != "a" and isinstance(account, dict) and isinstance(account.get("dir"), str):
+            found.append({"key": key, "dir": Path(account["dir"])})
+    return found
+
+
+def active_config_dir():
+    # The user-level variable decides which account new Claude sessions use. This process may
+    # have started before a switch, so read the registry instead of its own environment.
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            value, _ = winreg.QueryValueEx(key, "CLAUDE_CONFIG_DIR")
+            return Path(value) if value else None
+    except (ImportError, OSError):
+        root = os.environ.get("CLAUDE_CONFIG_DIR")
+        return Path(root) if root else None
+
+
+def same_dir(a, b):
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
 
 
 def claude_access_token(path=None):
@@ -114,15 +155,16 @@ def retry_after(value):
         return 300
 
 
-def latest_claude_api():
+def latest_claude_api(credentials=None, state_path=None):
     # Undocumented endpoint behind Claude Code's /usage. Any failure falls back to statusline data.
     if os.environ.get("AIUSAGE_CLAUDE_API") == "0":
         return None
     now = time.time()
-    state = read_json(CLAUDE_API_STATE)
+    state_path = state_path or CLAUDE_API_STATE
+    state = read_json(state_path)
     if isinstance(state, dict) and isinstance(state.get("next"), (int, float)) and now < state["next"]:
         return None
-    token = claude_access_token()
+    token = claude_access_token(credentials)
     if not token:
         return None
     wait, result = CLAUDE_API_MIN_INTERVAL, None
@@ -137,7 +179,7 @@ def latest_claude_api():
     except (OSError, ValueError):
         pass
     try:
-        write_json(CLAUDE_API_STATE, {"next": int(now + wait)})
+        write_json(state_path, {"next": int(now + wait)})
     except OSError:
         pass
     return result
@@ -240,19 +282,40 @@ def latest_codex():
                     pass
 
 
+def fresh(entry):
+    if not isinstance(entry, dict) or not isinstance(entry.get("updated"), (int, float))             or time.time() - entry["updated"] > 3600:
+        return None
+    return entry
+
+
+def account_usage(account, default):
+    # API first; each account backs off on its own. The account's own cache (written here or
+    # by its Claude sessions' statusline) is the fallback, never another account's numbers.
+    cache = account["dir"] / ACCOUNT_CACHE
+    state = CLAUDE_API_STATE if default else DATA / f"claude_api_{account['key']}.json"
+    usage = latest_claude_api(account["dir"] / ".credentials.json", state)
+    if usage:
+        for path in ([CLAUDE] if default else []) + [cache]:
+            try:
+                write_json(path, usage)
+            except OSError:
+                pass
+        return usage
+    return fresh(read_json(cache)) or (fresh(read_json(CLAUDE)) if default else None)
+
+
 def collect():
-    claude = latest_claude_api()
-    if claude:
-        # Share one file with the statusline tap so the freshest value from either source wins.
-        try:
-            write_json(CLAUDE, claude)
-        except OSError:
-            pass
-    else:
-        claude = read_json(CLAUDE)
-        if not isinstance(claude, dict) or not isinstance(claude.get("updated"), (int, float))                 or time.time() - claude["updated"] > 3600:
-            claude = None
-    return {"codex": latest_codex(), "claude": claude}
+    accounts, active = claude_accounts(), active_config_dir()
+    rows = []
+    for i, account in enumerate(accounts):
+        usage = account_usage(account, i == 0) or {}
+        is_active = same_dir(account["dir"], active) if active else i == 0
+        rows.append({"key": account["key"], "label": account["key"].upper(), "active": is_active,
+                     "five_hour": usage.get("five_hour"), "seven_day": usage.get("seven_day"),
+                     "updated": usage.get("updated")})
+    current = next((r for r in rows if r["active"]), rows[0])
+    claude = {k: current[k] for k in ("updated", "five_hour", "seven_day")} if current["updated"] else None
+    return {"codex": latest_codex(), "claude": claude, "claude_accounts": rows}
 
 
 if __name__ == "__main__":

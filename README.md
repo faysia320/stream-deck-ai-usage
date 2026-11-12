@@ -33,11 +33,15 @@ python .\tools\build_glyphs.py C:\path\to\Font-Bold.ttf
 3. Stream Deck 앱을 종료 후 다시 켭니다. 오른쪽의 **AI Usage**에서 **Codex 사용량**과 **Claude 사용량**을 키에 끌어 놓습니다.
 4. Claude Code에 로그인돼 있으면 Claude 사용량이 바로 나타납니다. 로그인 정보를 읽을 수 없으면 Claude Code에서 한 번 요청을 보낸 뒤 나타납니다. Codex는 이 PC에서 Codex 작업을 진행해 세션 기록에 한도 정보가 남으면 표시됩니다.
 
-설치기는 기존 Claude 상태 표시 명령을 래퍼로 덮어쓰지 않습니다. 구버전 래퍼가 설정돼 있으면 저장된 원래 명령 또는 `.claude/settings.json.aiusage-backup-*` 백업에서 복구합니다. 기존 `statusline-command.sh`에 Stream Deck 연결 단계가 있는 경우에는 `collector.py claude-stdin`을 직접 호출하도록 고칩니다. 변경 전 파일은 `.aiusage-repair-*`로 백업합니다. Claude 설정을 건드리지 않으려면 `-NoClaude`를 붙여 설치하세요. Claude 사용량 API 조회를 끄고 상태 표시 입력만 쓰려면 `-NoClaudeApi`를 붙여 설치하세요.
+설치기는 기존 Claude 상태 표시 명령을 래퍼로 덮어쓰지 않습니다. 구버전 래퍼가 설정돼 있으면 저장된 원래 명령 또는 `.claude/settings.json.aiusage-backup-*` 백업에서 복구합니다. 기존 `statusline-command.sh`에 예전 Stream Deck 연결 단계(상태 표시마다 `collector.py claude-stdin`을 백그라운드로 실행)가 남아 있으면 그 단계를 지웁니다. 이 단계는 Git Bash 프로세스를 남길 수 있었고, 이제 수집기가 사용량 API와 계정별 캐시를 직접 읽습니다. 변경 전 파일은 `.aiusage-repair-*`로 백업합니다. Claude 설정을 건드리지 않으려면 `-NoClaude`를 붙여 설치하세요. Claude 사용량 API 조회를 끄고 상태 표시 입력만 쓰려면 `-NoClaudeApi`를 붙여 설치하세요.
 
 실행용 파일은 `%APPDATA%\Elgato\StreamDeck\Plugins\com.local.aiusage.sdPlugin`에 복사됩니다. 소스 수정 후 `install.ps1`을 실행하고 Stream Deck을 완전히 종료 후 다시 시작하면 수정본이 적용됩니다.
 
-새 환경에서 사용자 상태 표시 스크립트에 연결하려면, JSON 입력을 읽은 뒤 `printf '%s' "$input" | python /설치경로/collector.py claude-stdin >/dev/null 2>&1`을 추가하세요. 경로는 슬래시를 사용합니다. `settings.json`의 상태 표시 명령은 기존 값을 유지합니다.
+상태 표시 스크립트를 연결할 필요는 없습니다. API 조회가 실패할 때를 대비하려면 상태 표시 스크립트가 `rate_limits`를 그 계정 설정 폴더의 `usage-cache.json`(`{"updated":초,"five_hour":{"used":%,"reset":초}|null,"seven_day":…}`)에 쓰게 하면 됩니다. `collector.py claude-stdin`도 호환을 위해 남아 있습니다.
+
+### Claude 계정 여러 개
+
+herdr-harness의 계정 전환(`~/.config/herdr-harness/claude-accounts.json`, 계정마다 별도 `CLAUDE_CONFIG_DIR`)을 쓰면 수집기가 등록된 **모든 계정**을 각 계정 폴더의 토큰으로 조회합니다. 결과는 계정 폴더의 `usage-cache.json`에도 저장됩니다. **Claude 사용량** 키와 **통합** 키는 계정마다 7일 막대를 하나씩 쌓아 보여 주고(라벨 `A`, `B` …), 새 Claude 세션이 쓰는 현재 계정에는 흰 점을 찍습니다. 키를 누르면 계정별 주간 리셋 날짜·시각을 보여 줍니다. 계정이 하나면 화면은 예전과 같습니다. 현재 계정은 사용자 환경변수 `CLAUDE_CONFIG_DIR`로 판단합니다.
 
 ## 데이터와 한계
 

@@ -1,4 +1,4 @@
-"""Restore a previous Claude statusline and repair its existing Stream Deck tap.
+"""Restore a previous Claude statusline and remove the old Stream Deck tap from it.
 
 Never replace an unrelated statusline. Only modify our wrapper setting or a
 script which already contains the StreamDeck AI-usage marker.
@@ -6,7 +6,6 @@ script which already contains the StreamDeck AI-usage marker.
 import json
 import os
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -65,26 +64,14 @@ def configure():
     if marker not in content:
         print('Original statusline preserved. See README for the optional collector tap.')
         return
-    python = Path(sys.executable).as_posix()
-    collector = (Path(os.environ['APPDATA'])/'Elgato/StreamDeck/Plugins/com.local.aiusage.sdPlugin/collector.py').as_posix()
-    block = f'''# --- StreamDeck AI-usage side-effect (collector only) ---
-# Save usage in the background; never call the statusline wrapper again.
-STREAMDECK_PY="{python}"
-STREAMDECK_SCRIPT="{collector}"
-sd_out=""
-if [ -f "$STREAMDECK_PY" ] && [ -f "$STREAMDECK_SCRIPT" ]; then
-  printf '%s' "$input" | timeout -s KILL 2 "$STREAMDECK_PY" "$STREAMDECK_SCRIPT" claude-stdin >/dev/null 2>&1 &
-  disown 2>/dev/null
-fi
-
-'''
-    repaired, count = re.subn(r'# --- StreamDeck AI-usage side-effect.*?(?=model="")',lambda _:block,content,count=1,flags=re.S)
+    # The collector now reads the usage API and each account's usage-cache.json by itself,
+    # so the old background tap (which could leave Git Bash processes behind) is removed.
+    stripped, count = re.subn(r'# --- StreamDeck AI-usage side-effect.*?(?=model="")', 'sd_out=""\n\n', content, count=1, flags=re.S)
     if count != 1:
         raise ValueError('Existing collector block not found')
-    if repaired != content:
-        backup(script)
-        script.write_text(repaired,encoding='utf-8',newline='\n')
-    print('Original Claude statusline restored; collector tap calls collector.py directly.')
+    backup(script)
+    script.write_text(stripped, encoding='utf-8', newline='\n')
+    print('Original Claude statusline restored; Stream Deck collector tap removed.')
 
 
 if __name__ == '__main__':

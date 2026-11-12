@@ -39,6 +39,9 @@ class ClaudeUsageTests(unittest.TestCase):
             patch.object(collector, "CLAUDE_API_STATE", root / "data" / "claude_api.json"),
             patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(root)}),
             patch.object(collector, "latest_codex", return_value=None),
+            # Never read this machine's real account list or registry.
+            patch.object(collector, "ACCOUNTS", root / "accounts.json"),
+            patch.object(collector, "active_config_dir", return_value=None),
         ]
         for item in self.patches:
             item.start()
@@ -114,3 +117,32 @@ class ClaudeUsageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MultiAccountTests(ClaudeUsageTests):
+    def test_every_account_is_read_with_its_own_token_and_cache(self):
+        root = Path(self.temp.name)
+        other = root / "b"
+        other.mkdir()
+        (other / ".credentials.json").write_text(json.dumps({"claudeAiOauth": {
+            "accessToken": "token-b", "expiresAt": (time.time() + 3600) * 1000}}))
+        collector.ACCOUNTS.write_text(json.dumps({"version": 1, "accounts": {
+            "a": {"label": "기본", "dir": None}, "b": {"label": "B", "dir": str(other)}}}))
+        # Stream Deck started after switching to B, so its own environment points at B.
+        # Account "a" must still be the default folder, not the folder in that environment.
+        os.environ["CLAUDE_CONFIG_DIR"] = str(other)
+        bodies = {"Bearer token": {"five_hour": {"utilization": 10}, "seven_day": {"utilization": 90}},
+                  "Bearer token-b": {"five_hour": {"utilization": 3}, "seven_day": {"utilization": 20}}}
+        def answer(request, timeout):
+            return Response(json.dumps(bodies[request.get_header("Authorization")]).encode())
+        with patch("collector.urllib.request.urlopen", side_effect=answer),                 patch.object(collector, "DEFAULT_ACCOUNT_DIR", root),                 patch.object(collector, "active_config_dir", return_value=other):
+            result = collector.collect()
+        rows = {r["key"]: r for r in result["claude_accounts"]}
+        self.assertEqual((rows["a"]["seven_day"]["used"], rows["b"]["seven_day"]["used"]), (90, 20))
+        self.assertTrue(rows["b"]["active"])
+        self.assertFalse(rows["a"]["active"])
+        # The single-account field follows the active account; each account keeps its own cache.
+        self.assertEqual(result["claude"]["seven_day"]["used"], 20)
+        self.assertEqual(json.loads((other / "usage-cache.json").read_text())["seven_day"]["used"], 20)
+        self.assertEqual(json.loads(collector.CLAUDE.read_text())["seven_day"]["used"], 90)
+

@@ -98,18 +98,46 @@ function render(kind, entry, state) {
   return row('5H', entry?.five_hour, 6) + row('7D', entry?.seven_day, 74);
 }
 
-// Combined key: Claude on top in orange, Codex below in green, each labelled with the
+// Every signed-in Claude account (herdr-harness keeps one config dir per login). With a
+// single account the keys look exactly as before.
+const claudeAccounts = () => Array.isArray(snapshot.claude_accounts) && snapshot.claude_accounts.length > 1
+  ? snapshot.claude_accounts : null;
+// The glyph font has no symbols to spare, so a white dot marks the account new Claude sessions use.
+const accountLabel = row => row.label;
+const activeDot = (x, y) => `<circle cx="${x}" cy="${y}" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>`;
+
+// Stacked weekly bars between top and bottom, one per row, labelled inside like the combined key.
+function stack(rows, top, bottom) {
+  const gap = 4, height = (bottom - top - gap * (rows.length - 1)) / rows.length;
+  const cap = Math.min(32, height * 0.45), labelCap = Math.min(14, height * 0.24);
+  return rows.map((r, i) => bar(`s${i}`, r.label, r.window, 4, top + i * (height + gap), 136, height, cap, labelCap, true, r.color) +
+    (r.active ? activeDot(131, top + i * (height + gap) + 9) : '')).join('');
+}
+
+function claudeMulti(rows, state) {
+  const top = state.title ? 36 : 4;
+  if (state.resets) {
+    const step = (140 - top) / rows.length;
+    // Text starts right of the dot column so the active marker never covers it.
+    return rows.map((r, i) => text(`${accountLabel(r)} ${day(r.seven_day)} ${clock(r.seven_day)}`, 78, top + step * i + step / 2 + 8, 18, {anchor:'middle', max:124}) +
+      (r.active ? activeDot(7, top + step * i + step / 2) : '')).join('');
+  }
+  return stack(rows.map(r => ({label:`${accountLabel(r)} ${remaining(r.seven_day)}`, window:r.seven_day, active:r.active})), top, 140);
+}
+
+// Combined key: each Claude account in orange, Codex below in green, each labelled with the
 // time left until its weekly reset.
 function combined() {
-  const half = (id, entry, y, color) => bar(id, remaining(entry?.seven_day), entry?.seven_day,
-                                            4, y, 136, 65, 32, 14, true, color);
-  return half('c', snapshot.claude, 4, '#C15F3C') + half('x', snapshot.codex, 75, '#1E7F45');
+  const claude = (claudeAccounts() ?? [{label:'', seven_day:snapshot.claude?.seven_day}])
+    .map(r => ({label:`${r.label ? `${accountLabel(r)} ` : ''}${remaining(r.seven_day)}`, window:r.seven_day, color:'#C15F3C', active:r.active && claudeAccounts()}));
+  return stack([...claude, {label:remaining(snapshot.codex?.seven_day), window:snapshot.codex?.seven_day, color:'#1E7F45'}], 4, 140);
 }
 
 function svg(kind, entry, state) {
   if (kind === 'combined') return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">${combined()}</svg>`;
   const head = state.title ? text(kind === 'codex' ? 'CODEX' : 'CLAUDE', 72, 27, 17, {anchor:'middle'}) : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">${head}${render(kind, entry, state)}</svg>`;
+  const rows = kind === 'claude' ? claudeAccounts() : null;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">${head}${rows ? claudeMulti(rows, state) : render(kind, entry, state)}</svg>`;
 }
 
 function refreshTitles() {
