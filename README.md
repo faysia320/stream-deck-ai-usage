@@ -45,6 +45,8 @@ herdr-harness의 계정 전환(`~/.config/herdr-harness/claude-accounts.json`, �
 
 ## 데이터와 한계
 
+Windows에서는 수집할 Claude 설정 폴더를 현재 사용자 환경변수에서 매번 읽습니다. `CLAUDE_CONFIG_DIR`를 삭제하면 기본 `~/.claude`로 돌아가며, Stream Deck 시작 시 물려받은 예전 계정 폴더는 사용하지 않습니다.
+
 - **Claude**: 두 출처를 함께 씁니다. 두 출처 모두 비율과 리셋 시각만 `%LOCALAPPDATA%\AIUsageStreamDeck\claude.json`에 저장하며, 더 최근에 받은 값이 표시됩니다. Claude 데스크톱 앱·웹·Claude Code 사용량은 같은 한도에 합산되므로 어느 쪽에서 쓴 양도 반영됩니다.
   1. **사용량 API**: Claude Code의 `/usage`가 쓰는 `https://api.anthropic.com/api/oauth/usage`를 1분마다 조회합니다. Claude Code가 터미널에서 실행 중이지 않아도 됩니다. 인증에는 Claude Code가 저장한 `%USERPROFILE%\.claude\.credentials.json`의 액세스 토큰을 **읽기만** 합니다. 토큰을 갱신하거나 파일에 쓰지 않으므로 Claude Code 로그인에 영향을 주지 않습니다. 토큰은 저장하거나 로그에 남기거나 플러그인에 넘기지 않습니다. 이 endpoint는 문서화되지 않은 내부 API라 예고 없이 바뀔 수 있습니다.
   2. **상태 표시 입력**: 공식 상태 표시 입력의 `rate_limits.five_hour`와 `rate_limits.seven_day`를 사용합니다. Pro/Max 로그인 계정에서 첫 응답 이후 제공됩니다. 상태 표시 입력 자체는 저장하지 않습니다.

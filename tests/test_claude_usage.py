@@ -8,7 +8,7 @@ import unittest
 import urllib.error
 from email.message import Message
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import collector
@@ -42,6 +42,7 @@ class ClaudeUsageTests(unittest.TestCase):
             # Never read this machine's real account list or registry.
             patch.object(collector, "ACCOUNTS", root / "accounts.json"),
             patch.object(collector, "active_config_dir", return_value=None),
+            patch.object(collector, "DEFAULT_ACCOUNT_DIR", root),
         ]
         for item in self.patches:
             item.start()
@@ -146,3 +147,31 @@ class MultiAccountTests(ClaudeUsageTests):
         self.assertEqual(json.loads((other / "usage-cache.json").read_text())["seven_day"]["used"], 20)
         self.assertEqual(json.loads(collector.CLAUDE.read_text())["seven_day"]["used"], 90)
 
+
+class CurrentConfigTests(unittest.TestCase):
+    def test_removed_user_setting_ignores_inherited_b_directory(self):
+        registry = MagicMock()
+        registry.QueryValueEx.side_effect = FileNotFoundError()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cached = {"updated": int(time.time()), "five_hour": None,
+                      "seven_day": {"used": 2, "reset": 1990000000}}
+            (root / collector.ACCOUNT_CACHE).write_text(json.dumps(cached))
+            with patch.dict(sys.modules, {"winreg": registry}), \
+                 patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(root / 'old-b')}), \
+                 patch.object(collector, "DEFAULT_ACCOUNT_DIR", root), \
+                 patch.object(collector, "ACCOUNTS", root / 'missing.json'), \
+                 patch.object(collector, "DATA", root), \
+                 patch.object(collector, "latest_claude_api", return_value=None), \
+                 patch.object(collector, "latest_codex", return_value=None):
+                self.assertEqual(collector.default_config_dir(), root)
+                result = collector.collect()
+            self.assertEqual(result['claude'], cached)
+            self.assertTrue(result['claude_accounts'][0]['active'])
+
+    def test_current_user_setting_overrides_inherited_directory(self):
+        registry = MagicMock()
+        registry.QueryValueEx.return_value = ('current-config', 1)
+        with patch.dict(sys.modules, {"winreg": registry}), \
+             patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": 'old-config'}):
+            self.assertEqual(collector.default_config_dir(), Path('current-config'))

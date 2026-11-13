@@ -82,8 +82,7 @@ def claude_stdin():
 
 
 def default_config_dir():
-    root = os.environ.get("CLAUDE_CONFIG_DIR")
-    return Path(root) if root else Path.home() / ".claude"
+    return active_config_dir() or DEFAULT_ACCOUNT_DIR
 
 
 def claude_credentials_path():
@@ -111,9 +110,12 @@ def active_config_dir():
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
             value, _ = winreg.QueryValueEx(key, "CLAUDE_CONFIG_DIR")
             return Path(value) if value else None
-    except (ImportError, OSError):
+    except ImportError:
         root = os.environ.get("CLAUDE_CONFIG_DIR")
         return Path(root) if root else None
+    except OSError:
+        # 삭제된 사용자 설정을 오래 실행된 Stream Deck의 환경변수로 되살리지 않는다.
+        return None
 
 
 def same_dir(a, b):
